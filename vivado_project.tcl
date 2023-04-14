@@ -140,7 +140,7 @@ set_property -name "revised_directory_structure" -value "1" -objects $obj
 set_property -name "sim.central_dir" -value "$proj_dir/${_xil_proj_name_}.ip_user_files" -objects $obj
 set_property -name "sim.ip.auto_export_scripts" -value "1" -objects $obj
 set_property -name "simulator_language" -value "Mixed" -objects $obj
-set_property -name "xpm_libraries" -value "XPM_CDC" -objects $obj
+set_property -name "xpm_libraries" -value "XPM_CDC XPM_MEMORY" -objects $obj
 
 # Create 'sources_1' fileset (if not found)
 if {[string equal [get_filesets -quiet sources_1] ""]} {
@@ -212,6 +212,7 @@ set obj [get_filesets sim_1]
 # Set 'sim_1' fileset properties
 set obj [get_filesets sim_1]
 set_property -name "top" -value "get_average" -objects $obj
+set_property -name "top_auto_set" -value "0" -objects $obj
 set_property -name "top_file" -value "hdl-src/get_average.v" -objects $obj
 set_property -name "top_lib" -value "xil_defaultlib" -objects $obj
 
@@ -354,7 +355,7 @@ proc cr_bd_design_1 { parentCell } {
 
   # Create ports
   set hdmi_rx_hpd [ create_bd_port -dir O -from 0 -to 0 hdmi_rx_hpd ]
-  set led_out [ create_bd_port -dir O led_out ]
+  set led_data [ create_bd_port -dir O led_data ]
   set sys_clock [ create_bd_port -dir I -type clk -freq_hz 125000000 sys_clock ]
   set_property -dict [ list \
    CONFIG.PHASE {0.0} \
@@ -481,7 +482,7 @@ proc cr_bd_design_1 { parentCell } {
   # Create port connections
   connect_bd_net -net clk_wiz_0_clk_out1 [get_bd_pins clk_wiz_0/clk_out1] [get_bd_pins dvi2rgb_0/RefClk]
   connect_bd_net -net clk_wiz_0_clk_out2 [get_bd_pins clk_wiz_0/clk_out2] [get_bd_pins data_gen_0/clk]
-  connect_bd_net -net data_gen_0_d_out [get_bd_ports led_out] [get_bd_pins data_gen_0/d_out] [get_bd_pins ila_0/probe6]
+  connect_bd_net -net data_gen_0_d_out [get_bd_ports led_data] [get_bd_pins data_gen_0/d_out] [get_bd_pins ila_0/probe6]
   connect_bd_net -net dvi2rgb_0_PixelClk [get_bd_pins dvi2rgb_0/PixelClk] [get_bd_pins get_average_0/clk] [get_bd_pins ila_0/clk] [get_bd_pins rgb2dvi_0/PixelClk] [get_bd_pins v_count_0/clk]
   connect_bd_net -net dvi2rgb_0_vid_pData [get_bd_pins dvi2rgb_0/vid_pData] [get_bd_pins get_average_0/rgb] [get_bd_pins ila_0/probe0] [get_bd_pins rgb2dvi_0/vid_pData]
   connect_bd_net -net dvi2rgb_0_vid_pHSync [get_bd_pins dvi2rgb_0/vid_pHSync] [get_bd_pins ila_0/probe1] [get_bd_pins rgb2dvi_0/vid_pHSync]
@@ -513,3 +514,7 @@ proc cr_bd_design_1 { parentCell } {
 cr_bd_design_1 ""
 set_property REGISTERED_WITH_MANAGER "1" [get_files design_1.bd ] 
 set_property SYNTH_CHECKPOINT_MODE "Hierarchical" [get_files design_1.bd ] 
+
+
+# Create wrapper file for design_1.bd
+make_wrapper -files [get_files design_1.bd] -import -top
