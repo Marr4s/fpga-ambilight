@@ -21,7 +21,7 @@
 
 
 module data_gen(
-    input clk,
+    input clk_100mhz,
     output wire d_out,
     input reset,
     
@@ -29,7 +29,10 @@ module data_gen(
     input [7:0] green,
     input [7:0] blue,
     
-    input trig
+    input trig_in,
+    output nxt_out,
+    output wire t_valid,
+    output wire rdy
     );
     
     // 1 clk -> 0.01us
@@ -37,65 +40,97 @@ module data_gen(
     localparam T1H=80; // 0.8us -> 80 clocks
     localparam T0L=85; // 0.85us -> 85 clocks
     localparam T1L=45; // 0.45us -> 45 clocks
-    // reset 50us -> 5000 clocks (*10 to be safe)
-    localparam Tres=50000;
+    // reset after 50us (5000 clocks) - 300us
+    localparam minTres=2500; // consider 25us as safe to continue with previous stream
+    localparam Tres=40000; // consider 400us as safe for new data
     
     localparam IDLE=4'b0000, TRANS=4'b0001, TRANS0=4'b0010, TRANS1=4'b0011, UPDATE=4'b0100, FIN=4'b0101; 
     
     reg [15:0] counter; // 0-65000
-    reg [3:0] state;
+    reg [3:0] state, l_state;
     reg i_out;
-    reg d_trig;
+    reg trig_reg, trig, d_trig;
     reg [7:0] idx;
-    //reg [47:0] color = {24'hCB2C21, 24'h66B2FF}; //GRB
-    reg [23:0] color = {24'hFFFFFF}; //GRB
+    reg [23:0] buf_color;
+    reg [23:0] cur_color = {24'hFFFFFF}; //GRB
+    reg buf_up;  // buffer got updated to, buf_color available again
+    reg nxt;
     
     assign d_out = i_out;
+    assign rdy = (state == IDLE);
     
-    always @(posedge clk) begin
+    // cdc of trigger
+    always @(posedge clk_100mhz) begin
+	  { trig, trig_reg } <= { trig_reg, trig_in };
+	end
+    
+    // Fill color buffer if there is new data
+    assign t_valid = d_trig;
+    assign nxt_out = nxt & !t_valid;
+    always @(posedge clk_100mhz) begin
+      if(d_trig == 0 && trig == 1 && (nxt || rdy)) begin
+        buf_color <= {green, red, blue};
+        nxt <= 0;
+      end
+      else if(buf_up) nxt <= 1;
+      //else if(state == FIN) nxt <= 0;
+      //else if(rdy) nxt <= 1;
+      
       d_trig <= trig;
     end
     
-    always @(posedge clk) begin
+    // state counter logic 
+    always @(posedge clk_100mhz) begin
+      if(l_state != state) counter <= 0;
+      else counter <= counter + 1;
+
+      l_state <= state;
+    end
+    
+    
+    always @(posedge clk_100mhz) begin
+      buf_up <= 0;
       if(reset) begin
         state <= IDLE;
-        counter <= 0;
         i_out <= 0;
         idx <= 23;
       end
       else begin
-        //color <= {24'hCB2C21, 24'h66B2FF};
-        color <= {green, red, blue};
         case(state)
           IDLE: begin
             i_out <= 0;
-            if(d_trig == 0 && trig == 1) begin
+            if(nxt == 0) begin // new data available
               state <= TRANS;
-              counter <= 0;
+              cur_color <= buf_color;
+              buf_up <= 1;
               idx <= 23;
             end
           end
           TRANS: begin
             i_out <= 0;
-            if(color[idx] == 1'b0) state <= TRANS0;
+            if(cur_color[idx] == 1'b0) state <= TRANS0;
             else state <= TRANS1;
           end
           TRANS0: begin
-            counter <= counter+1;
             if(counter < T0H) i_out <= 1;
             else i_out <= 0;
             if(counter >= T0H+T0L-3) state <= UPDATE;
           end
           TRANS1: begin
-            counter <= counter+1;
             if(counter < T1H) i_out <= 1;
             else i_out <= 0;
             if(counter >= T1H+T1L-3) state <= UPDATE;
           end
           UPDATE: begin
             i_out <= 0;
-            counter <= 0;
-            if(idx == 0) state <= FIN;
+            if(idx == 0) begin
+              if(nxt == 0) begin
+                idx <= 23;
+                cur_color <= buf_color;
+                buf_up <= 1;
+                state <= TRANS;
+              end else if(counter > minTres) state <= FIN;
+            end
             else begin 
               idx <= idx-1;
               state <= TRANS;
@@ -103,8 +138,8 @@ module data_gen(
           end
           FIN: begin
             i_out <= 0;
-            counter <= counter+1;
-            if(counter > Tres) state <= IDLE;
+            buf_up <= 1; // clear buffer
+            if(counter > Tres - minTres) state <= IDLE;
           end
         endcase
       end

@@ -18,10 +18,10 @@
 proc checkRequiredFiles { origin_dir} {
   set status true
   set files [list \
+   "${origin_dir}/hdl-src/v_count.v" \
    "${origin_dir}/hdl-src/data_gen.v" \
    "${origin_dir}/hdl-src/get_average_sv.sv" \
    "${origin_dir}/hdl-src/get_average.v" \
-   "${origin_dir}/hdl-src/v_count.v" \
    "${origin_dir}/hdl-src/constr/const.xdc" \
   ]
   foreach ifile $files {
@@ -159,10 +159,10 @@ update_ip_catalog -rebuild
 # Set 'sources_1' fileset object
 set obj [get_filesets sources_1]
 set files [list \
+ [file normalize "${origin_dir}/hdl-src/v_count.v"] \
  [file normalize "${origin_dir}/hdl-src/data_gen.v"] \
  [file normalize "${origin_dir}/hdl-src/get_average_sv.sv"] \
  [file normalize "${origin_dir}/hdl-src/get_average.v"] \
- [file normalize "${origin_dir}/hdl-src/v_count.v"] \
 ]
 add_files -norecurse -fileset $obj $files
 
@@ -392,6 +392,8 @@ proc cr_bd_design_1 { parentCell } {
   # Create instance: dvi2rgb_0, and set properties
   set dvi2rgb_0 [ create_bd_cell -type ip -vlnv digilentinc.com:ip:dvi2rgb:2.0 dvi2rgb_0 ]
   set_property -dict [ list \
+   CONFIG.IIC_BOARD_INTERFACE {Custom} \
+   CONFIG.TMDS_BOARD_INTERFACE {Custom} \
    CONFIG.kClkRange {1} \
    CONFIG.kEdidFileName {dgl_1080p_cea.data} \
  ] $dvi2rgb_0
@@ -413,9 +415,10 @@ proc cr_bd_design_1 { parentCell } {
    CONFIG.C_DATA_DEPTH {32768} \
    CONFIG.C_ENABLE_ILA_AXI_MON {false} \
    CONFIG.C_MONITOR_TYPE {Native} \
-   CONFIG.C_NUM_OF_PROBES {11} \
+   CONFIG.C_NUM_OF_PROBES {16} \
    CONFIG.C_PROBE0_WIDTH {24} \
    CONFIG.C_PROBE10_WIDTH {8} \
+   CONFIG.C_PROBE15_WIDTH {8} \
    CONFIG.C_PROBE4_WIDTH {16} \
    CONFIG.C_PROBE5_WIDTH {16} \
    CONFIG.C_PROBE7_WIDTH {24} \
@@ -425,6 +428,9 @@ proc cr_bd_design_1 { parentCell } {
 
   # Create instance: rgb2dvi_0, and set properties
   set rgb2dvi_0 [ create_bd_cell -type ip -vlnv digilentinc.com:ip:rgb2dvi:1.4 rgb2dvi_0 ]
+  set_property -dict [ list \
+   CONFIG.TMDS_BOARD_INTERFACE {Custom} \
+ ] $rgb2dvi_0
 
   # Create instance: v_count_0, and set properties
   set block_name v_count
@@ -481,25 +487,30 @@ proc cr_bd_design_1 { parentCell } {
 
   # Create port connections
   connect_bd_net -net clk_wiz_0_clk_out1 [get_bd_pins clk_wiz_0/clk_out1] [get_bd_pins dvi2rgb_0/RefClk]
-  connect_bd_net -net clk_wiz_0_clk_out2 [get_bd_pins clk_wiz_0/clk_out2] [get_bd_pins data_gen_0/clk]
+  connect_bd_net -net clk_wiz_0_clk_out2 [get_bd_pins clk_wiz_0/clk_out2] [get_bd_pins data_gen_0/clk_100mhz]
   connect_bd_net -net data_gen_0_d_out [get_bd_ports led_data] [get_bd_pins data_gen_0/d_out] [get_bd_pins ila_0/probe6]
+  connect_bd_net -net data_gen_0_nxt [get_bd_pins data_gen_0/nxt_out] [get_bd_pins get_average_0/nxt] [get_bd_pins ila_0/probe12]
+  connect_bd_net -net data_gen_0_rdy [get_bd_pins data_gen_0/rdy] [get_bd_pins get_average_0/rdy] [get_bd_pins ila_0/probe14]
+  connect_bd_net -net data_gen_0_t_valid [get_bd_pins data_gen_0/t_valid] [get_bd_pins get_average_0/t_valid] [get_bd_pins ila_0/probe13]
   connect_bd_net -net dvi2rgb_0_PixelClk [get_bd_pins dvi2rgb_0/PixelClk] [get_bd_pins get_average_0/clk] [get_bd_pins ila_0/clk] [get_bd_pins rgb2dvi_0/PixelClk] [get_bd_pins v_count_0/clk]
   connect_bd_net -net dvi2rgb_0_vid_pData [get_bd_pins dvi2rgb_0/vid_pData] [get_bd_pins get_average_0/rgb] [get_bd_pins ila_0/probe0] [get_bd_pins rgb2dvi_0/vid_pData]
   connect_bd_net -net dvi2rgb_0_vid_pHSync [get_bd_pins dvi2rgb_0/vid_pHSync] [get_bd_pins ila_0/probe1] [get_bd_pins rgb2dvi_0/vid_pHSync]
-  connect_bd_net -net dvi2rgb_0_vid_pVDE [get_bd_pins dvi2rgb_0/vid_pVDE] [get_bd_pins ila_0/probe3] [get_bd_pins rgb2dvi_0/vid_pVDE] [get_bd_pins v_count_0/valid]
-  connect_bd_net -net dvi2rgb_0_vid_pVSync [get_bd_pins data_gen_0/trig] [get_bd_pins dvi2rgb_0/vid_pVSync] [get_bd_pins ila_0/probe2] [get_bd_pins rgb2dvi_0/vid_pVSync] [get_bd_pins v_count_0/vsync]
+  connect_bd_net -net dvi2rgb_0_vid_pVDE [get_bd_pins dvi2rgb_0/vid_pVDE] [get_bd_pins get_average_0/p_valid] [get_bd_pins ila_0/probe3] [get_bd_pins rgb2dvi_0/vid_pVDE] [get_bd_pins v_count_0/valid]
+  connect_bd_net -net dvi2rgb_0_vid_pVSync [get_bd_pins dvi2rgb_0/vid_pVSync] [get_bd_pins get_average_0/v_sync] [get_bd_pins ila_0/probe2] [get_bd_pins rgb2dvi_0/vid_pVSync] [get_bd_pins v_count_0/vsync]
   connect_bd_net -net get_average_0_avg_rgb [get_bd_pins get_average_0/avg_rgb] [get_bd_pins ila_0/probe7] [get_bd_pins xlslice_0/Din] [get_bd_pins xlslice_1/Din] [get_bd_pins xlslice_2/Din]
   connect_bd_net -net get_average_0_deb_h_pos [get_bd_pins get_average_0/deb_h_pos] [get_bd_pins ila_0/probe8]
+  connect_bd_net -net get_average_0_deb_out_cnt [get_bd_pins get_average_0/deb_out_cnt] [get_bd_pins ila_0/probe15]
   connect_bd_net -net get_average_0_deb_v_pos [get_bd_pins get_average_0/deb_v_pos] [get_bd_pins ila_0/probe9]
   connect_bd_net -net get_average_0_led_id [get_bd_pins get_average_0/led_id] [get_bd_pins ila_0/probe10]
+  connect_bd_net -net get_average_0_trig [get_bd_pins data_gen_0/trig_in] [get_bd_pins get_average_0/trig] [get_bd_pins ila_0/probe11]
   connect_bd_net -net sys_clock_1 [get_bd_ports sys_clock] [get_bd_pins clk_wiz_0/clk_in1]
   connect_bd_net -net v_count_0_o_h_cnt [get_bd_pins get_average_0/h_cnt] [get_bd_pins ila_0/probe5] [get_bd_pins v_count_0/o_h_cnt]
   connect_bd_net -net v_count_0_o_v_cnt [get_bd_pins get_average_0/v_cnt] [get_bd_pins ila_0/probe4] [get_bd_pins v_count_0/o_v_cnt]
   connect_bd_net -net xlconstant_0_dout [get_bd_ports hdmi_rx_hpd] [get_bd_pins xlconstant_0/dout]
   connect_bd_net -net xlconstant_1_dout [get_bd_pins data_gen_0/reset] [get_bd_pins xlconstant_1/dout]
   connect_bd_net -net xlslice_0_Dout [get_bd_pins data_gen_0/red] [get_bd_pins xlslice_0/Dout]
-  connect_bd_net -net xlslice_1_Dout [get_bd_pins data_gen_0/blue] [get_bd_pins xlslice_1/Dout]
-  connect_bd_net -net xlslice_2_Dout [get_bd_pins data_gen_0/green] [get_bd_pins xlslice_2/Dout]
+  connect_bd_net -net xlslice_1_Dout [get_bd_pins data_gen_0/green] [get_bd_pins xlslice_1/Dout]
+  connect_bd_net -net xlslice_2_Dout [get_bd_pins data_gen_0/blue] [get_bd_pins xlslice_2/Dout]
 
   # Create address segments
 
