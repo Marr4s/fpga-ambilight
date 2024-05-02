@@ -25,7 +25,9 @@ module get_average_sv #(
     parameter h_pix = 1920,
     parameter num_h = 19,
     parameter num_v = 11,
-    parameter cnt4pixavg = 64
+    parameter cnt4pixavg = 64,
+    localparam X_BITS = $clog2(cnt4pixavg), // extra bits needed for sum calculation
+    localparam MAX_DIST = cnt4pixavg>>($clog2(cnt4pixavg)/2)  // Calc squareroot of pix - only works for every second power of two (4, 16, 64, ..)
 )(
     input clk,
     
@@ -43,6 +45,10 @@ module get_average_sv #(
     input t_valid_in,
     input rdy
     );
+    
+    // check parameter
+    if (cnt4pixavg != 4 && cnt4pixavg != 16 && cnt4pixavg != 64 && cnt4pixavg != 256 && cnt4pixavg != 1024 && cnt4pixavg != 4096)
+        $error($sformatf("Illegal values for parameters cnt4pixavg (%0d). Use 4, 16, 64, 256, 1024 or 4096.", cnt4pixavg));
     
     localparam pix_h = h_pix/num_h;
     localparam pix_v = v_pix/num_v;
@@ -87,14 +93,14 @@ module get_average_sv #(
     reg buf_valid;
     
     // rgb sum buffers
-    reg [num_leds:0] [7+6:0] r_sum;
-    reg [num_leds:0] [7+6:0] g_sum;
-    reg [num_leds:0] [7+6:0] b_sum;
+    reg [num_leds:0] [7+X_BITS:0] r_sum;
+    reg [num_leds:0] [7+X_BITS:0] g_sum;
+    reg [num_leds:0] [7+X_BITS:0] b_sum;
     
     // buffer final sum which is used for leds
-    reg [num_leds:0] [7+6:0] out_r_sum;
-    reg [num_leds:0] [7+6:0] out_g_sum;
-    reg [num_leds:0] [7+6:0] out_b_sum;
+    reg [num_leds:0] [7+X_BITS:0] out_r_sum;
+    reg [num_leds:0] [7+X_BITS:0] out_g_sum;
+    reg [num_leds:0] [7+X_BITS:0] out_b_sum;
 
     // current sector
     assign h_pos = h_cnt/pix_h;
@@ -135,7 +141,7 @@ module get_average_sv #(
       // process data from previous cycle
       if(buf_valid) begin
         // calculate sum if distance is ok
-        if(x_dist+y_dist<8) begin
+        if(x_dist+y_dist<MAX_DIST) begin
           r_sum[led_id_delayed] <= r_sum[led_id_delayed] + rgb_delayed[23:16];
           g_sum[led_id_delayed] <= g_sum[led_id_delayed] + rgb_delayed[15:8];
           b_sum[led_id_delayed] <= b_sum[led_id_delayed] + rgb_delayed[7:0];
@@ -167,9 +173,9 @@ module get_average_sv #(
       end
       else if(out_cnt < num_leds) begin
         // only take top bits for avg division (bit shift)
-        avg_rgb[23:16] <= out_r_sum[out_cnt][13:6];
-        avg_rgb[15:8] <= out_g_sum[out_cnt][13:6];
-        avg_rgb[7:0] <= out_b_sum[out_cnt][13:6];
+        avg_rgb[23:16] <= out_r_sum[out_cnt][X_BITS+7:X_BITS];
+        avg_rgb[15:8] <= out_g_sum[out_cnt][X_BITS+7:X_BITS];
+        avg_rgb[7:0] <= out_b_sum[out_cnt][X_BITS+7:X_BITS];
         if(nxt) trig <= 1;
         if(t_valid && trig) begin
           trig <= 0;

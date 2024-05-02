@@ -24,7 +24,8 @@ module get_average #(
 parameter v_pix = 1080,
     parameter h_pix = 1920,
     parameter num_h = 10,
-    parameter num_v = 5
+    parameter num_v = 5,
+    parameter cnt4pixavg = 64
 )(
     input clk,
     input [23:0] rbg,
@@ -48,7 +49,8 @@ parameter v_pix = 1080,
       .v_pix(v_pix),
       .h_pix(h_pix),
       .num_h(num_h),
-      .num_v(num_v)
+      .num_v(num_v),
+      .cnt4pixavg(cnt4pixavg)
     ) inst_ave (
       .clk(clk),
       .rgb(rgb),
