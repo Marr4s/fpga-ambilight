@@ -27,7 +27,7 @@ parameter v_pix = 1080,
     parameter num_v = 5
 )(
     input clk,
-    input [23:0] rgb,
+    input [23:0] rbg,
     input [15:0] h_cnt,
     input [15:0] v_cnt,
     input p_valid,
@@ -37,14 +37,13 @@ parameter v_pix = 1080,
     output trig,
     input nxt,
     input t_valid,
-    input rdy,
-    
-    output [7:0] deb_h_pos,
-    output [7:0] deb_v_pos,
-    output [7:0] led_id,
-    output [7:0] deb_out_cnt
+    input rdy
 
     );
+    wire [23:0] rgb;
+    
+    assign rgb = {rbg[23:16], rbg[7:0], rbg[15:8]};
+    
     get_average_sv #(
       .v_pix(v_pix),
       .h_pix(h_pix),
@@ -61,10 +60,6 @@ parameter v_pix = 1080,
       .trig(trig),
       .nxt_in(nxt),
       .t_valid_in(t_valid),
-      .rdy(rdy),
-      .deb_h_pos(deb_h_pos),
-      .deb_v_pos(deb_v_pos),
-      .led_id(led_id),
-      .deb_out_cnt(deb_out_cnt)
+      .rdy(rdy)
     );
 endmodule

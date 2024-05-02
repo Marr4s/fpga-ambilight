@@ -19,13 +19,13 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
-// TODO: more control/handshake: when is rgb value valid, when should we forward a new avg_rgb, ...
 
 module get_average_sv #(
     parameter v_pix = 1080,
     parameter h_pix = 1920,
-    parameter num_h = 10,
-    parameter num_v = 5
+    parameter num_h = 19,
+    parameter num_v = 11,
+    parameter cnt4pixavg = 64
 )(
     input clk,
     
@@ -41,91 +41,112 @@ module get_average_sv #(
     output reg trig,
     input nxt_in,
     input t_valid_in,
-    input rdy,
-    
-    // debug
-    output [7:0] deb_h_pos,
-    output [7:0] deb_v_pos,
-    output [7:0] deb_out_cnt,
-    output [7:0] led_id
+    input rdy
     );
     
     localparam pix_h = h_pix/num_h;
     localparam pix_v = v_pix/num_v;
     localparam num_leds = num_h+2*num_v-2;
     
-    wire [7:0] h_pos, v_pos; // current position
-    wire [7:0] led_id; // led_id
-    reg [7:0] d_led_id;
-    reg rst;
+    // fill lut for pixel center positions
+    reg [num_leds:0] [1:0] [15:0] led_pos_lut; // led - x/y - coords
+    initial begin
+      integer i;
+      for(i = 0; i<num_leds; i=i+1) begin
+        if(i < num_v) begin
+          // left edge
+          led_pos_lut[i][0] = 0;
+          led_pos_lut[i][1] = v_pix-pix_v*i-pix_v/2;
+        end else if(i > num_v+num_h-2) begin
+          // right edge
+          led_pos_lut[i][0] = h_pix-1;
+          led_pos_lut[i][1] = pix_v/2+pix_v*(i-num_v-num_h+2);
+        end else begin
+          // top
+          led_pos_lut[i][0] = pix_h/2+pix_h*(i-num_v+1);
+          led_pos_lut[i][1] = 0;
+        end
+      end
+    end
     
-    wire [15:0] cur_cnt;
-    reg [15:0] new_cnt;
-    reg [7:0] new_r, new_g, new_b;
+    wire [7:0] h_pos, v_pos;// current sector position
+    wire [7:0] led_id;      // current led based on sector
+    reg [15:0] x_dist;      // x distance from selected led (led_id) to current position
+    reg [15:0] y_dist;      // y distance from selected led (led_id) to current position
     
-    wire [7:0] w_r_ave, w_g_ave, w_b_ave;
+    reg d_vsync;            // delayed vsync for edge detetection
+    reg [7:0] out_cnt = num_leds;   // track which led's rgb value is currently forwarded
     
-    reg [num_leds:0] [23:0] rgb_buffer;
-    reg [num_leds:0] [23:0] out_rgb_buffer;
-    reg [num_leds:0] [15:0] cnt_buffer;
-    
-    reg d_vsync;
-    reg [7:0] out_cnt = num_leds; // TODO determine size based on number leds
-    
+    // handshake cdc to data gen module
     reg t_valid_reg, t_valid;
     reg nxt_reg, nxt;
     
+    // capture values in case distance calculation is valid
+    reg [23:0] rgb_delayed;
+    reg [7:0] led_id_delayed;
+    reg buf_valid;
+    
+    // rgb sum buffers
+    reg [num_leds:0] [7+6:0] r_sum;
+    reg [num_leds:0] [7+6:0] g_sum;
+    reg [num_leds:0] [7+6:0] b_sum;
+    
+    // buffer final sum which is used for leds
+    reg [num_leds:0] [7+6:0] out_r_sum;
+    reg [num_leds:0] [7+6:0] out_g_sum;
+    reg [num_leds:0] [7+6:0] out_b_sum;
+
+    // current sector
     assign h_pos = h_cnt/pix_h;
     assign v_pos = v_cnt/pix_v;
     
-    // DEBUG
-    assign deb_h_pos = h_pos;
-    assign deb_v_pos = v_pos;
-    assign deb_out_cnt = out_cnt;
-    
-    /* ex: for num_v=3, num_h=5
+    /**************************
+    * ex: for num_v=3, num_h=5
     * 2 3 4 5 6
     * 1       7
     * 0       8
     * --> 0-2 first condition, 3-6 second condition, 7-8 third condition
-    */
+    ***************************/
     assign led_id = (h_pos == 0)       ? num_v-v_pos-1 : // left edge
                     (v_pos == 0)       ? num_v+h_pos-1 : // upper border
                     (h_pos == num_h-1) ? num_v+h_pos+v_pos-1 : // right border                 
                     8'hFF; // invalid area -> only look at edges
     
-    // pixel capture control logic
+    // vsync edge detection:
+    // - rising edge: start forwarding data to led
+    // - falling edge: reset buffers for next frame
     always @(posedge clk) begin
-      rst <= 0;
-      d_led_id <= led_id;
-      // do register updates if led_id changes
-      if(d_led_id != led_id) begin
-        // update old led_id values
-        if(d_led_id < num_leds) begin
-          rgb_buffer[d_led_id] <= {w_r_ave, w_g_ave, w_b_ave};
-          cnt_buffer[d_led_id] <= cur_cnt;
-        end
+        d_vsync <= v_sync;
+    end
+    
+    // rgb capture logic
+    always @(posedge clk) begin
+      buf_valid <= 0;
         
-        // init new averages
-        if(led_id < num_leds) begin
-          new_cnt <= cnt_buffer[led_id];
-          new_r <= rgb_buffer[led_id][23:16];
-          new_g <= rgb_buffer[led_id][15:8];
-          new_b <= rgb_buffer[led_id][7:0];
-          rst <= 1;
+      // buffer values for this cycle
+      if(led_id < num_leds && p_valid) begin
+        x_dist <= (led_pos_lut[led_id][0]>h_cnt)?(led_pos_lut[led_id][0] - h_cnt):(h_cnt - led_pos_lut[led_id][0]);
+        y_dist <= (led_pos_lut[led_id][1]>v_cnt)?(led_pos_lut[led_id][1] - v_cnt):(v_cnt - led_pos_lut[led_id][1]);
+        rgb_delayed <= rgb;
+        led_id_delayed <= led_id;
+        buf_valid <= 1'b1;
+      end
+        
+      // process data from previous cycle
+      if(buf_valid) begin
+        // calculate sum if distance is ok
+        if(x_dist+y_dist<8) begin
+          r_sum[led_id_delayed] <= r_sum[led_id_delayed] + rgb_delayed[23:16];
+          g_sum[led_id_delayed] <= g_sum[led_id_delayed] + rgb_delayed[15:8];
+          b_sum[led_id_delayed] <= b_sum[led_id_delayed] + rgb_delayed[7:0];
         end
       end
-      
+        
       // new frame, reset buffer
-      d_vsync <= v_sync;
       if(d_vsync == 1 && v_sync == 0) begin
-        rgb_buffer <= 0;
-        cnt_buffer <= 0;
-        new_cnt <= 0;
-        new_r <= 0;
-        new_g <= 0;
-        new_b <= 0;
-        rst <= 1;
+        r_sum <= 0;
+        g_sum <= 0;
+        b_sum <= 0;
       end
     end
     
@@ -136,95 +157,28 @@ module get_average_sv #(
     end
     
     // data out logic
-    // TODO: do we need more than one frame to send rgb values to led strip --> dont do it every frame
     always @(posedge clk) begin
       // update after full frame but only if transmission is done
-      if((d_vsync == 0) && (v_sync == 1) && (out_cnt == num_leds) && rdy) begin// TODO: choose different time? (falling v_valid, ...) before reseting in above logic
-        out_rgb_buffer <= rgb_buffer;
+      if((d_vsync == 0) && (v_sync == 1) && (out_cnt == num_leds) && rdy) begin
+        out_r_sum <= r_sum;
+        out_g_sum <= g_sum;
+        out_b_sum <= b_sum;
         out_cnt <= 0;
       end
       else if(out_cnt < num_leds) begin
-        avg_rgb <= out_rgb_buffer[out_cnt];
+        // only take top bits for avg division (bit shift)
+        avg_rgb[23:16] <= out_r_sum[out_cnt][13:6];
+        avg_rgb[15:8] <= out_g_sum[out_cnt][13:6];
+        avg_rgb[7:0] <= out_b_sum[out_cnt][13:6];
         if(nxt) trig <= 1;
         if(t_valid && trig) begin
           trig <= 0;
           out_cnt <= out_cnt + 1;
         end
-        // TODO: what if rdy in middle of transmission?
       end
-      else // out_cnt > num_leds -> error should never happen!
+      else // out_cnt > num_leds -> error, should never happen!
         out_cnt <= num_leds;
     end
-    
-    // TODO: when trigger data send out (as soon as v_valid low)? done with rising v_sync
-    // TODO: when reset avg buffer (as soon as new frame announced (v_sync))? done with falling v_sync
-    // TODO: when to update moving averages (only if h_valid and v_valid (clk*h/v_valid))? done with p_valid
-    
-    // TODO: don't do this every clock cylce if not h/v_valid
-    MovingAverage inst_r_ave (
-      .clk(clk),
-      .rst(rst),
-      .value(rgb[23:16]),
-      .p_valid(p_valid),
-      .init_count(new_cnt),
-      .init_average(new_r),
-      .count(cur_cnt),
-      .average(w_r_ave)
-    );
-    
-    MovingAverage inst_g_ave (
-      .clk(clk),
-      .rst(rst),
-      .value(rgb[7:0]),
-      .p_valid(p_valid),
-      .init_count(new_cnt),
-      .init_average(new_g),
-      .count(),
-      .average(w_g_ave)
-    );
-    
-    MovingAverage inst_b_ave (
-      .clk(clk),
-      .rst(rst),
-      .value(rgb[15:8]),
-      .p_valid(p_valid),
-      .init_count(new_cnt),
-      .init_average(new_b),
-      .count(),
-      .average(w_b_ave)
-    );
-    
+
 
 endmodule
-
-// Include intermediate value if we get back to area, buffer count?
-// TODO: only one instance for rgb (thus only e.g. one count reg)
-module MovingAverage(
-  input wire clk,
-  input wire rst,
-  input wire [7:0] value,
-  input wire p_valid,
-  input wire [15:0] init_count,
-  input wire [7:0] init_average,
-  output wire [15:0] count,
-  output wire [7:0] average
-);
-
-  reg [15:0] count_reg;
-  reg [15:0] prev_average;
-
-  always @(posedge clk) begin
-    if (rst) begin
-      count_reg <= init_count;
-      prev_average <= init_average;
-    end else if(p_valid) begin
-      count_reg <= count_reg + 1;
-      prev_average <= prev_average + ((value - prev_average) / count_reg);
-    end
-  end
-
-  assign average = prev_average;
-  assign count = count_reg;
-
-endmodule
-

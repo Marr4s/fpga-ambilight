@@ -18,11 +18,11 @@
 proc checkRequiredFiles { origin_dir} {
   set status true
   set files [list \
-   "${origin_dir}/hdl-src/v_count.v" \
-   "${origin_dir}/hdl-src/data_gen.v" \
-   "${origin_dir}/hdl-src/get_average_sv.sv" \
-   "${origin_dir}/hdl-src/get_average.v" \
-   "${origin_dir}/hdl-src/constr/const.xdc" \
+ "[file normalize "$origin_dir/hdl-src/data_gen.v"]"\
+ "[file normalize "$origin_dir/hdl-src/v_count.v"]"\
+ "[file normalize "$origin_dir/hdl-src/get_average_sv.sv"]"\
+ "[file normalize "$origin_dir/hdl-src/get_average.v"]"\
+ "[file normalize "$origin_dir/hdl-src/constr/const.xdc"]"\
   ]
   foreach ifile $files {
     if { ![file isfile $ifile] } {
@@ -32,7 +32,7 @@ proc checkRequiredFiles { origin_dir} {
   }
 
   set paths [list \
-   [file normalize "$origin_dir/vivado-library"] \
+ "[file normalize "$origin_dir/[file normalize "$origin_dir/vivado-library"]"]"\
   ]
   foreach ipath $paths {
     if { ![file isdirectory $ipath] } {
@@ -150,10 +150,10 @@ if {[string equal [get_filesets -quiet sources_1] ""]} {
 # Set IP repository paths
 set obj [get_filesets sources_1]
 if { $obj != {} } {
-set_property "ip_repo_paths" "[file normalize "$origin_dir/vivado-library"]" $obj
+   set_property "ip_repo_paths" "[file normalize "$origin_dir/vivado-library"]" $obj
 
-# Rebuild user ip_repo's index before adding any source files
-update_ip_catalog -rebuild
+   # Rebuild user ip_repo's index before adding any source files
+   update_ip_catalog -rebuild
 }
 
 # Set 'sources_1' fileset object
@@ -408,7 +408,11 @@ proc cr_bd_design_1 { parentCell } {
      catch {common::send_gid_msg -ssname BD::TCL -id 2096 -severity "ERROR" "Unable to referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
      return 1
    }
-  
+    set_property -dict [ list \
+   CONFIG.num_h {19} \
+   CONFIG.num_v {11} \
+ ] $get_average_0
+
   # Create instance: ila_0, and set properties
   set ila_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:ila:6.2 ila_0 ]
   set_property -dict [ list \
@@ -493,15 +497,11 @@ proc cr_bd_design_1 { parentCell } {
   connect_bd_net -net data_gen_0_rdy [get_bd_pins data_gen_0/rdy] [get_bd_pins get_average_0/rdy] [get_bd_pins ila_0/probe14]
   connect_bd_net -net data_gen_0_t_valid [get_bd_pins data_gen_0/t_valid] [get_bd_pins get_average_0/t_valid] [get_bd_pins ila_0/probe13]
   connect_bd_net -net dvi2rgb_0_PixelClk [get_bd_pins dvi2rgb_0/PixelClk] [get_bd_pins get_average_0/clk] [get_bd_pins ila_0/clk] [get_bd_pins rgb2dvi_0/PixelClk] [get_bd_pins v_count_0/clk]
-  connect_bd_net -net dvi2rgb_0_vid_pData [get_bd_pins dvi2rgb_0/vid_pData] [get_bd_pins get_average_0/rgb] [get_bd_pins ila_0/probe0] [get_bd_pins rgb2dvi_0/vid_pData]
+  connect_bd_net -net dvi2rgb_0_vid_pData [get_bd_pins dvi2rgb_0/vid_pData] [get_bd_pins get_average_0/rbg] [get_bd_pins ila_0/probe0] [get_bd_pins rgb2dvi_0/vid_pData]
   connect_bd_net -net dvi2rgb_0_vid_pHSync [get_bd_pins dvi2rgb_0/vid_pHSync] [get_bd_pins ila_0/probe1] [get_bd_pins rgb2dvi_0/vid_pHSync]
   connect_bd_net -net dvi2rgb_0_vid_pVDE [get_bd_pins dvi2rgb_0/vid_pVDE] [get_bd_pins get_average_0/p_valid] [get_bd_pins ila_0/probe3] [get_bd_pins rgb2dvi_0/vid_pVDE] [get_bd_pins v_count_0/valid]
   connect_bd_net -net dvi2rgb_0_vid_pVSync [get_bd_pins dvi2rgb_0/vid_pVSync] [get_bd_pins get_average_0/v_sync] [get_bd_pins ila_0/probe2] [get_bd_pins rgb2dvi_0/vid_pVSync] [get_bd_pins v_count_0/vsync]
   connect_bd_net -net get_average_0_avg_rgb [get_bd_pins get_average_0/avg_rgb] [get_bd_pins ila_0/probe7] [get_bd_pins xlslice_0/Din] [get_bd_pins xlslice_1/Din] [get_bd_pins xlslice_2/Din]
-  connect_bd_net -net get_average_0_deb_h_pos [get_bd_pins get_average_0/deb_h_pos] [get_bd_pins ila_0/probe8]
-  connect_bd_net -net get_average_0_deb_out_cnt [get_bd_pins get_average_0/deb_out_cnt] [get_bd_pins ila_0/probe15]
-  connect_bd_net -net get_average_0_deb_v_pos [get_bd_pins get_average_0/deb_v_pos] [get_bd_pins ila_0/probe9]
-  connect_bd_net -net get_average_0_led_id [get_bd_pins get_average_0/led_id] [get_bd_pins ila_0/probe10]
   connect_bd_net -net get_average_0_trig [get_bd_pins data_gen_0/trig_in] [get_bd_pins get_average_0/trig] [get_bd_pins ila_0/probe11]
   connect_bd_net -net sys_clock_1 [get_bd_ports sys_clock] [get_bd_pins clk_wiz_0/clk_in1]
   connect_bd_net -net v_count_0_o_h_cnt [get_bd_pins get_average_0/h_cnt] [get_bd_pins ila_0/probe5] [get_bd_pins v_count_0/o_h_cnt]
